@@ -3,10 +3,10 @@ import discord
 from discord.ext import commands
 import asyncio
 import threading
+import random
 
 app = Flask(__name__)
 
-# Template HTML da página web (Design simples e responsivo para PC e Celular)
 HTML_PAGINA = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -58,13 +58,13 @@ HTML_PAGINA = """
 </html>
 """
 
-# Função que roda o selfbot de forma isolada na conta de quem pediu
 async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
-    bot = commands.Bot(command_prefix="!", self_bot=True)
+    # Configuração para evitar travamentos por limite de mensagem
+    bot = commands.Bot(command_prefix="!", self_bot=True, heartbeat_timeout=60.0)
     
     @bot.event
     async def on_ready():
-        print(f"📡 Conectado ao selfbot de {bot.user.name} via Web!")
+        print(f"📡 Conectado ao selfbot de {bot.user.name}")
         channel = bot.get_channel(int(channel_id))
         if not channel:
             await bot.close()
@@ -74,26 +74,43 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
         await channel.send(f"🤖 *Conectado ao painel web. Iniciando farm de {quantidade} rolls...*")
         
         us_utilizado = False
-        for i in range(quantidade):
-            await channel.send(comando)
-            await asyncio.sleep(2.5) # Intervalo seguro anti-ban
-            
-            # Checa se os rolls acabaram nas últimas mensagens
-            mensagens = [msg async for msg in channel.history(limit=3)]
-            rolagens_esgotadas = False
-            for msg in mensagens:
-                if msg.author.id == 432610292342587392: # ID do Mudae
-                    conteudo = msg.content.lower() or (msg.embeds.description.lower() if msg.embeds else "")
-                    if "esgotada" in conteudo or "0 rolls" in conteudo or "limite" in conteudo:
-                        rolagens_esgotadas = True
-                        break
-                        
-            if rolagens_esgotadas and not us_utilizado:
-                await channel.send("$us")
-                us_utilizado = True
-                await asyncio.sleep(3.5)
-            elif rolagens_esgotadas and us_utilizado:
-                await channel.send("🛑 *Meus rolls acabaram. Desconectando do painel.*")
+        i = 0
+        
+        while i < quantidade:
+            try:
+                await channel.send(comando)
+                i += 1
+                print(f"Roll {i}/{quantidade} enviado para {bot.user.name}")
+                
+                # Tempo humano variável e mais seguro para evitar o bloqueio (rate limit)
+                await asyncio.sleep(random.uniform(3.2, 4.5))
+                
+                # Monitora as mensagens para checar se esgotou
+                mensagens = [msg async for msg in channel.history(limit=3)]
+                rolagens_esgotadas = False
+                for msg in mensagens:
+                    if msg.author.id == 432610292342587392: # ID da Mudae
+                        conteudo = msg.content.lower() or (msg.embeds.description.lower() if msg.embeds else "")
+                        if "esgotada" in conteudo or "0 rolls" in conteudo or "limite" in conteudo:
+                            rolagens_esgotadas = True
+                            break
+                            
+                if rolagens_esgotadas and not us_utilizado:
+                    await channel.send("$us")
+                    us_utilizado = True
+                    await asyncio.sleep(4.0) # Pausa maior após usar o \$us
+                elif rolagens_esgotadas and us_utilizado:
+                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando do painel.*")
+                    break
+                    
+            except discord.errors.HTTPException as e:
+                # Se o Discord bloquear por mandar mensagem rápido, o bot espera o tempo necessário e não quebra
+                if e.status == 429:
+                    print("⚠️ Rate limit atingido. Aguardando proteção do Discord...")
+                    await asyncio.sleep(5.0)
+                else:
+                    break
+            except Exception:
                 break
                 
         await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
@@ -102,7 +119,7 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
     try:
         await bot.start(token)
     except Exception as e:
-        print(f"Erro de login no selfbot web: {e}")
+        print(f"Erro de login: {e}")
 
 def start_bot_thread(token, channel_id, quantidade, categoria):
     loop = asyncio.new_event_loop()
@@ -120,9 +137,7 @@ def iniciar_farm():
     quantidade = int(request.form.get('quantidade', 15))
     categoria = request.form.get('categoria', 'wa')
     
-    # Dispara o farm em segundo plano para não travar o site
     threading.Thread(target=start_bot_thread, args=(token, channel_id, quantidade, categoria), daemon=True).start()
-    
     return "<h3>🚀 Farm Iniciado! Olhe o canal do seu Discord, a conta já deve estar rolando. Pode fechar esta página se quiser!</h3><br><a href='/'>Voltar</a>"
 
 if __name__ == '__main__':
