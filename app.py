@@ -81,10 +81,16 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 i += 1
                 print(f"Roll {i}/{quantidade} enviado para {bot.user.name}")
                 
-                # NOVO TEMPO: Pausa maior e mais segura (entre 4.5 e 6.0 segundos) 
-                # para contas normais não tomarem bloqueio do Discord
+                # Pausa humana padrão entre cada mensagem individual
                 await asyncio.sleep(random.uniform(4.5, 6.0))
                 
+                # ESTRATÉGIA ANTI-BLOQUEIO: A cada 10 rolagens, faz uma pausa longa de 12 segundos
+                # Isso faz o Discord e a Mudae acharem que você parou para olhar os personagens
+                if i % 10 == 0 and i < quantidade:
+                    print("☕ Fazendo pausa estratégica de descanso para evitar bloqueios...")
+                    await asyncio.sleep(12.0)
+                
+                # Monitora o chat para ver se esgotou
                 mensagens = [msg async for msg in channel.history(limit=3)]
                 rolagens_esgotadas = False
                 for msg in mensagens:
@@ -97,15 +103,15 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 if rolagens_esgotadas and not us_utilizado:
                     await channel.send("$us")
                     us_utilizado = True
-                    await asyncio.sleep(5.0) 
+                    await asyncio.sleep(6.0) # Pausa maior para computar o reset do \$us
                 elif rolagens_esgotadas and us_utilizado:
-                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando.*")
+                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando do painel.*")
                     break
                     
             except discord.errors.HTTPException as e:
                 if e.status == 429:
-                    print("⚠️ Sistema de proteção do Discord ativo. Aguardando...")
-                    await asyncio.sleep(8.0) # Espera mais tempo se o Discord reclamar
+                    print("⚠️ Bloqueio temporário do Discord detectado. Aguardando recuo...")
+                    await asyncio.sleep(15.0) # Espera bem mais tempo se o Discord reclamar
                 else:
                     break
             except Exception:
@@ -135,8 +141,11 @@ def iniciar_farm():
     quantidade = int(request.form.get('quantidade', 15))
     categoria = request.form.get('categoria', 'wa')
     
-    threading.Thread(target=start_bot_thread, args=(token, channel_id, quantidade, categoria), daemon=True).start()
+    threading.Thread(target=start_bot_thread, args=(token, channel_id, quantity_to_loop(quantidade), categoria), daemon=True).start()
     return "<h3>🚀 Farm Iniciado! Olhe o canal do seu Discord, a conta já deve estar rolando. Pode fechar esta página se quiser!</h3><br><a href='/'>Voltar</a>"
+
+def quantity_to_loop(q):
+    return q
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
