@@ -7,6 +7,7 @@ import random
 
 app = Flask(__name__)
 
+# Template HTML sem o limite 'max' no campo de quantidade
 HTML_PAGINA = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -36,7 +37,8 @@ HTML_PAGINA = """
             <input type="text" name="channel_id" placeholder="Ex: 123456789012345" required>
             
             <label>Quantidade de Rolagens:</label>
-            <input type="number" name="quantidade" value="15" min="1" max="50" required>
+            <!-- Removido o 'max' para permitir qualquer quantidade -->
+            <input type="number" name="quantidade" value="15" min="1" required>
             
             <label>Categoria:</label>
             <select name="categoria">
@@ -79,18 +81,17 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
             try:
                 await channel.send(comando)
                 i += 1
-                print(f"Roll {i}/{quantidade} enviado para {bot.user.name}")
+                print(f"Roll {i}/{quantidade} enviado por {bot.user.name}")
                 
-                # Pausa humana padrão entre cada mensagem individual
+                # Pausa humana segura entre mensagens (4.5 a 6.0 segundos)
                 await asyncio.sleep(random.uniform(4.5, 6.0))
                 
-                # ESTRATÉGIA ANTI-BLOQUEIO: A cada 10 rolagens, faz uma pausa longa de 12 segundos
-                # Isso faz o Discord e a Mudae acharem que você parou para olhar os personagens
+                # Pausa estratégica a cada 10 envios para evitar bloqueios do Discord
                 if i % 10 == 0 and i < quantidade:
-                    print("☕ Fazendo pausa estratégica de descanso para evitar bloqueios...")
+                    print("☕ Fazendo pausa de descanso para o Discord respirar...")
                     await asyncio.sleep(12.0)
                 
-                # Monitora o chat para ver se esgotou
+                # Monitora as mensagens para checar se esgotou
                 mensagens = [msg async for msg in channel.history(limit=3)]
                 rolagens_esgotadas = False
                 for msg in mensagens:
@@ -103,15 +104,15 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 if rolagens_esgotadas and not us_utilizado:
                     await channel.send("$us")
                     us_utilizado = True
-                    await asyncio.sleep(6.0) # Pausa maior para computar o reset do \$us
+                    await asyncio.sleep(5.0) 
                 elif rolagens_esgotadas and us_utilizado:
-                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando do painel.*")
+                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando.*")
                     break
                     
             except discord.errors.HTTPException as e:
                 if e.status == 429:
-                    print("⚠️ Bloqueio temporário do Discord detectado. Aguardando recuo...")
-                    await asyncio.sleep(15.0) # Espera bem mais tempo se o Discord reclamar
+                    print("⚠️ Bloqueio temporário (Rate Limit). Aguardando...")
+                    await asyncio.sleep(15.0)
                 else:
                     break
             except Exception:
@@ -119,11 +120,6 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 
         await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
         await bot.close()
-
-    try:
-        await bot.start(token)
-    except Exception as e:
-        print(f"Erro de login: {e}")
 
 def start_bot_thread(token, channel_id, quantidade, categoria):
     loop = asyncio.new_event_loop()
@@ -141,11 +137,8 @@ def iniciar_farm():
     quantidade = int(request.form.get('quantidade', 15))
     categoria = request.form.get('categoria', 'wa')
     
-    threading.Thread(target=start_bot_thread, args=(token, channel_id, quantity_to_loop(quantidade), categoria), daemon=True).start()
+    threading.Thread(target=start_bot_thread, args=(token, channel_id, quantidade, categoria), daemon=True).start()
     return "<h3>🚀 Farm Iniciado! Olhe o canal do seu Discord, a conta já deve estar rolando. Pode fechar esta página se quiser!</h3><br><a href='/'>Voltar</a>"
-
-def quantity_to_loop(q):
-    return q
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
