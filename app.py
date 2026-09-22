@@ -59,7 +59,6 @@ HTML_PAGINA = """
 """
 
 async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
-    # Configuração para evitar travamentos por limite de mensagem
     bot = commands.Bot(command_prefix="!", self_bot=True, heartbeat_timeout=60.0)
     
     @bot.event
@@ -82,10 +81,10 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 i += 1
                 print(f"Roll {i}/{quantidade} enviado para {bot.user.name}")
                 
-                # Tempo humano variável e mais seguro para evitar o bloqueio (rate limit)
-                await asyncio.sleep(random.uniform(3.2, 4.5))
+                # NOVO TEMPO: Pausa maior e mais segura (entre 4.5 e 6.0 segundos) 
+                # para contas normais não tomarem bloqueio do Discord
+                await asyncio.sleep(random.uniform(4.5, 6.0))
                 
-                # Monitora as mensagens para checar se esgotou
                 mensagens = [msg async for msg in channel.history(limit=3)]
                 rolagens_esgotadas = False
                 for msg in mensagens:
@@ -98,16 +97,15 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 if rolagens_esgotadas and not us_utilizado:
                     await channel.send("$us")
                     us_utilizado = True
-                    await asyncio.sleep(4.0) # Pausa maior após usar o \$us
+                    await asyncio.sleep(5.0) 
                 elif rolagens_esgotadas and us_utilizado:
-                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando do painel.*")
+                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando.*")
                     break
                     
             except discord.errors.HTTPException as e:
-                # Se o Discord bloquear por mandar mensagem rápido, o bot espera o tempo necessário e não quebra
                 if e.status == 429:
-                    print("⚠️ Rate limit atingido. Aguardando proteção do Discord...")
-                    await asyncio.sleep(5.0)
+                    print("⚠️ Sistema de proteção do Discord ativo. Aguardando...")
+                    await asyncio.sleep(8.0) # Espera mais tempo se o Discord reclamar
                 else:
                     break
             except Exception:
