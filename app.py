@@ -7,7 +7,6 @@ import random
 
 app = Flask(__name__)
 
-# Template HTML sem o limite 'max' no campo de quantidade
 HTML_PAGINA = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -37,7 +36,6 @@ HTML_PAGINA = """
             <input type="text" name="channel_id" placeholder="Ex: 123456789012345" required>
             
             <label>Quantidade de Rolagens:</label>
-            <!-- Removido o 'max' para permitir qualquer quantidade -->
             <input type="number" name="quantidade" value="15" min="1" required>
             
             <label>Categoria:</label>
@@ -68,10 +66,13 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
         print(f"📡 Conectado ao selfbot de {bot.user.name}")
         channel = bot.get_channel(int(channel_id))
         if not channel:
+            print("❌ Canal não encontrado.")
             await bot.close()
             return
             
-        comando = f"${categoria}"
+        # Garante que o comando tenha exatamente uma $ no início
+        comando = categoria if categoria.startswith("$") else f"${categoria}"
+        
         await channel.send(f"🤖 *Conectado ao painel web. Iniciando farm de {quantidade} rolls...*")
         
         us_utilizado = False
@@ -83,39 +84,53 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
                 i += 1
                 print(f"Roll {i}/{quantidade} enviado por {bot.user.name}")
                 
-                # Pausa humana segura entre mensagens (4.5 a 6.0 segundos)
-                await asyncio.sleep(random.uniform(4.5, 6.0))
+                # Aguarda a resposta da Mudae
+                await asyncio.sleep(random.uniform(2.5, 4.0))
                 
-                # Pausa estratégica a cada 10 envios para evitar bloqueios do Discord
-                if i % 10 == 0 and i < quantidade:
-                    print("☕ Fazendo pausa de descanso para o Discord respirar...")
-                    await asyncio.sleep(12.0)
-                
-                # Monitora as mensagens para checar se esgotou
-                mensagens = [msg async for msg in channel.history(limit=3)]
+                # Verifica se as rolagens acabaram nas últimas mensagens
                 rolagens_esgotadas = False
-                for msg in mensagens:
+                async for msg in channel.history(limit=5):
                     if msg.author.id == 432610292342587392: # ID da Mudae
-                        conteudo = msg.content.lower() or (msg.embeds.description.lower() if msg.embeds else "")
-                        if "esgotada" in conteudo or "0 rolls" in conteudo or "limite" in conteudo:
+                        conteudo = (msg.content or "").lower()
+                        if msg.embeds:
+                            for embed in msg.embeds:
+                                if embed.description:
+                                    conteudo += " " + embed.description.lower()
+                                if embed.title:
+                                    conteudo += " " + embed.title.lower()
+                                if embed.footer and embed.footer.text:
+                                    conteudo += " " + embed.footer.text.lower()
+                        
+                        # Termos de limite da Mudae
+                        if "são limitadas a" in conteudo or "the roulette is limited to" in conteudo or "0/1" in conteudo:
                             rolagens_esgotadas = True
                             break
-                            
-                if rolagens_esgotadas and not us_utilizado:
-                    await channel.send("$us")
-                    us_utilizado = True
-                    await asyncio.sleep(5.0) 
-                elif rolagens_esgotadas and us_utilizado:
-                    await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando.*")
-                    break
-                    
+
+                if rolagens_esgotadas:
+                    if not us_utilizado:
+                        print("⚡ Tentando usar $us...")
+                        await channel.send("$us")
+                        us_utilizado = True
+                        await asyncio.sleep(3.0)
+                    else:
+                        print("🛑 Rolagens totalmente esgotadas.")
+                        await channel.send("🛑 *Meus rolls acabaram definitivamente. Desconectando.*")
+                        break
+                
+                # Pausa estratégica a cada 10 envios
+                if i % 10 == 0 and i < quantidade:
+                    print("☕ Pausa de descanso de 10 segundos...")
+                    await asyncio.sleep(10.0)
+
             except discord.errors.HTTPException as e:
                 if e.status == 429:
-                    print("⚠️ Bloqueio temporário (Rate Limit). Aguardando...")
+                    print("⚠️ Rate limit detectado. Aguardando 15s...")
                     await asyncio.sleep(15.0)
                 else:
+                    print(f"⚠️ Erro HTTP: {e}")
                     break
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ Erro inesperado: {e}")
                 break
                 
         await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
@@ -124,7 +139,10 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
 def start_bot_thread(token, channel_id, quantidade, categoria):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(rodar_selfbot_task(token, channel_id, quantidade, categoria))
+    try:
+        loop.run_until_complete(rodar_selfbot_task(token, channel_id, quantidade, categoria))
+    finally:
+        loop.close()
 
 @app.route('/')
 def index():
