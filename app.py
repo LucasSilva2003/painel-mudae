@@ -43,6 +43,9 @@ def enviar_mensagem(token, channel_id, conteudo):
             raise Exception(f"HTTP {res.status_code}: {res.text}")
 
 def executar_farm_thread(token, channel_id, quantidade, categoria):
+    if db:
+        db.set("parar_farm", "0") # Reset no sinal de parada
+
     comando = categoria if categoria.startswith("$") else f"${categoria}"
     atualizar_status(True, 0, quantidade, "Iniciando rolagens...")
 
@@ -54,6 +57,15 @@ def executar_farm_thread(token, channel_id, quantidade, categoria):
     time.sleep(3)
 
     for numero in range(1, quantidade + 1):
+        # Verifica se o botão de parar foi clicado
+        if db and db.get("parar_farm") == "1":
+            try:
+                enviar_mensagem(token, channel_id, f"🛑 *Farm interrompido pelo usuário no roll {numero-1}/{quantidade}.*")
+            except Exception:
+                pass
+            atualizar_status(False, numero - 1, quantidade, "🛑 Farm Interrompido!")
+            return
+
         try:
             msg_id = enviar_mensagem(token, channel_id, comando)
             atualizar_status(True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.")
@@ -84,8 +96,9 @@ HTML_PAGINA = """
         label { display: block; text-align: left; margin-top: 15px; margin-bottom: 5px; font-size: 14px; }
         input, select, button { width: 100%; padding: 12px; margin: 5px 0; border-radius: 5px; border: none; box-sizing: border-box; font-size: 15px; }
         input, select { background: #4f545c; color: white; }
-        button { background: #43b581; color: white; font-weight: bold; cursor: pointer; margin-top: 20px; }
-        button:disabled { background: #747f8d; cursor: not-allowed; }
+        .btn-start { background: #43b581; color: white; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .btn-stop { background: #f04747; color: white; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        button:disabled { background: #747f8d; cursor: not-allowed; opacity: 0.6; }
         .footer { font-size: 12px; color: #faa61a; margin-top: 20px; }
         .status-box { margin-top: 25px; padding: 15px; background: #202225; border-radius: 8px; }
         .contador { font-size: 28px; font-weight: bold; color: #ff69b4; margin: 10px 0; }
@@ -118,8 +131,10 @@ HTML_PAGINA = """
                 <option value="w">$w (Mulheres Geral)</option>
                 <option value="h">$h (Homens Geral)</option>
             </select>
-            <button type="submit" id="btnIniciar">🚀 INICIAR FARM AUTOMÁTICO</button>
+            <button type="submit" id="btnIniciar" class="btn-start">🚀 INICIAR FARM AUTOMÁTICO</button>
         </form>
+        
+        <button id="btnParar" onclick="pararFarm()" class="btn-stop" disabled>🛑 PARAR ROLAGENS</button>
 
         <div class="status-box">
             <div id="contador" class="contador">0/0</div>
@@ -138,6 +153,14 @@ HTML_PAGINA = """
             if (data.erro) alert(data.erro);
         }
 
+        async function pararFarm() {
+            const res = await fetch("/parar", { method: "POST" });
+            const data = await res.json();
+            if (data.sucesso) {
+                document.getElementById("mensagem").innerText = "Solicitando parada...";
+            }
+        }
+
         async function atualizarStatus() {
             try {
                 const res = await fetch("/status");
@@ -146,7 +169,10 @@ HTML_PAGINA = """
                 document.getElementById("mensagem").innerText = d.mensagem || "Aguardando...";
                 let pct = d.quantidade > 0 ? (d.enviados / d.quantidade) * 100 : 0;
                 document.getElementById("progresso").style.width = pct + "%";
+                
+                // Controle dos botões
                 document.getElementById("btnIniciar").disabled = d.rodando;
+                document.getElementById("btnParar").disabled = !d.rodando;
             } catch(e) {}
         }
         setInterval(atualizarStatus, 2000);
@@ -180,6 +206,12 @@ def iniciar():
         daemon=True
     ).start()
 
+    return jsonify({"sucesso": True})
+
+@app.route("/parar", methods=["POST"])
+def parar():
+    if db:
+        db.set("parar_farm", "1")
     return jsonify({"sucesso": True})
 
 @app.route("/status")
