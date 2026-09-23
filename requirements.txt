@@ -1,2 +1,4 @@
-Flask
-discord.py-self
+flask
+requests
+redis
+gunicorn
