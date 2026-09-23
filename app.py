@@ -72,15 +72,24 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, usar_us, inic
         try:
             resposta = enviar_mensagem(token, channel_id, comando)
             
-            conteudo_resposta = resposta.get("content", "") if isinstance(resposta, dict) else ""
+            # Lê o conteúdo e também possíveis embeds retornados pelo Discord/Mudae
+            conteudo_resposta = ""
+            if isinstance(resposta, dict):
+                conteudo_resposta = resposta.get("content", "") or ""
+                for embed in resposta.get("embeds", []):
+                    conteudo_resposta += " " + embed.get("description", "") + " " + embed.get("title", "")
             
-            if "os rolls são limitado" in conteudo_resposta.lower() or "limite de rolagens" in conteudo_resposta.lower():
+            conteudo_lower = conteudo_resposta.lower()
+            
+            # Verificação aprimorada para detetar o limite de rolls independentemente da variação exata
+            if "limitado" in conteudo_lower or "min restante" in conteudo_lower or "upvote" in conteudo_lower:
                 if usar_us and not us_usado:
                     atualizar_status(channel_id, True, numero - 1, quantidade, "⚠️ Rolls esgotados! Usando $us 20...", pausado=False)
                     enviar_mensagem(token, channel_id, "$us 20")
                     us_usado = True
-                    time.sleep(3)
+                    time.sleep(3)  # Aguarda a Mudae processar o reset
                     
+                    # Tenta novamente o comando após o uso do $us
                     enviar_mensagem(token, channel_id, comando)
                     atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado ($us ativado).", pausado=False)
                 else:
