@@ -1,12 +1,74 @@
 from flask import Flask, render_template_string, request, jsonify
-import redis
+import requests
+import time
 import json
+import redis
+import threading
 import os
 
 app = Flask(__name__)
 
+# Conexão ao Redis interno do Render
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-db = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+try:
+    db = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+except Exception as e:
+    db = None
+
+def atualizar_status(rodando, enviados, quantidade, mensagem):
+    dados = {
+        "rodando": rodando,
+        "enviados": enviados,
+        "quantidade": quantidade,
+        "mensagem": mensagem
+    }
+    if db:
+        try:
+            db.set("farm_status", json.dumps(dados))
+        except Exception:
+            pass
+
+def enviar_mensagem(token, channel_id, conteudo):
+    url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+    headers = {"Authorization": token, "Content-Type": "application/json"}
+    
+    while True:
+        res = requests.post(url, headers=headers, json={"content": conteudo}, timeout=10)
+        if res.status_code in [200, 201]:
+            return res.json().get("id")
+        elif res.status_code == 429:
+            espera = res.json().get("retry_after", 4.0)
+            time.sleep(float(espera) + 0.5)
+        else:
+            raise Exception(f"HTTP {res.status_code}: {res.text}")
+
+def executar_farm_thread(token, channel_id, quantidade, categoria):
+    comando = categoria if categoria.startswith("$") else f"${categoria}"
+    atualizar_status(True, 0, quantidade, "Iniciando rolagens...")
+
+    try:
+        enviar_mensagem(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
+    except Exception:
+        pass
+
+    time.sleep(3)
+
+    for numero in range(1, quantidade + 1):
+        try:
+            msg_id = enviar_mensagem(token, channel_id, comando)
+            atualizar_status(True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.")
+        except Exception as e:
+            atualizar_status(True, numero, quantidade, f"Erro no roll {numero}.")
+
+        if numero < quantidade:
+            time.sleep(4)
+
+    try:
+        enviar_mensagem(token, channel_id, f"✅ *Farm concluído! {quantidade} rolls enviados.*")
+    except Exception:
+        pass
+
+    atualizar_status(False, quantidade, quantidade, "✅ Farm Concluído!")
 
 HTML_PAGINA = """
 <!DOCTYPE html>
@@ -99,27 +161,30 @@ def index():
 
 @app.route("/iniciar", methods=["POST"])
 def iniciar():
-    status_raw = db.get("farm_status")
+    status_raw = db.get("farm_status") if db else None
     status = json.loads(status_raw) if status_raw else {}
     if status.get("rodando"):
         return jsonify({"erro": "Um farm já está em execução!"})
 
-    dados = {
-        "token": request.form.get("token", "").strip(),
-        "channel_id": request.form.get("channel_id", "").strip(),
-        "quantidade": int(request.form.get("quantidade", 15)),
-        "categoria": request.form.get("categoria", "wa").strip()
-    }
+    token = request.form.get("token", "").strip()
+    channel_id = request.form.get("channel_id", "").strip()
+    categoria = request.form.get("categoria", "wa").strip()
+    try:
+        quantidade = int(request.form.get("quantidade", 15))
+    except ValueError:
+        quantidade = 15
 
-    db.rpush("fila_farm", json.dumps(dados))
-    db.set("farm_status", json.dumps({
-        "rodando": True, "enviados": 0, "quantidade": dados["quantidade"], "mensagem": "Na fila do Worker..."
-    }))
+    threading.Thread(
+        target=executar_farm_thread,
+        args=(token, channel_id, quantidade, categoria),
+        daemon=True
+    ).start()
+
     return jsonify({"sucesso": True})
 
 @app.route("/status")
 def get_status():
-    status_raw = db.get("farm_status")
+    status_raw = db.get("farm_status") if db else None
     return jsonify(json.loads(status_raw) if status_raw else {"rodando": False})
 
 if __name__ == "__main__":
