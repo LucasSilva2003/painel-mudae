@@ -1,10 +1,7 @@
 from flask import Flask, render_template_string, request
-import discord
-from discord.ext import commands
-import asyncio
-import threading
 import requests
 import time
+import threading
 
 app = Flask(__name__)
 
@@ -59,8 +56,8 @@ HTML_PAGINA = """
 </html>
 """
 
-def enviar_mensagem_api(token, channel_id, conteudo):
-    """Envia mensagem diretamente via API HTTP do Discord sem depender de sockets."""
+def enviar_mensagem(token, channel_id, conteudo):
+    """Realiza o envio direto à API HTTP do Discord."""
     url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
     headers = {
         "Authorization": token,
@@ -68,39 +65,48 @@ def enviar_mensagem_api(token, channel_id, conteudo):
     }
     payload = {"content": conteudo}
     
-    try:
-        res = requests.post(url, headers=headers, json=payload)
-        if res.status_code == 429:
-            # Rate limit atingido, lê o tempo de espera retornado pelo Discord
-            dados = res.json()
-            espera = dados.get("retry_after", 5)
-            print(f"⚠️ Rate limit detectado. Aguardando {espera}s...")
-            time.sleep(espera)
-            # Tenta reenviar a mensagem
-            requests.post(url, headers=headers, json=payload)
-        return res.status_code in [200, 201]
-    except Exception as e:
-        print(f"⚠️ Erro no envio HTTP: {e}")
-        return False
+    while True:
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=10)
+            
+            if res.status_code in [200, 201]:
+                return True
+            
+            elif res.status_code == 429:
+                # Rate limit atingido: aguarda o tempo exigido pelo Discord
+                dados = res.json()
+                espera = dados.get("retry_after", 4.0)
+                print(f"⚠️ Rate limit detectado. Aguardando {espera}s para tentar novamente...")
+                time.sleep(float(espera) + 0.5)
+            else:
+                print(f"⚠️ Erro HTTP {res.status_code}: {res.text}")
+                return False
+                
+        except Exception as e:
+            print(f"⚠️ Falha de conexão na requisição: {e}. Re-tentando em 3s...")
+            time.sleep(3.0)
 
-def executar_farm_direto(token, channel_id, quantidade, categoria):
+def executar_farm_thread(token, channel_id, quantidade, categoria):
     comando = categoria if categoria.startswith("$") else f"${categoria}"
     
-    print(f"🚀 Iniciando ciclo direto de {quantidade} rolls...")
-    enviar_mensagem_api(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls via API...*")
-    
-    for i in range(1, quantidade + 1):
-        sucesso = enviar_mensagem_api(token, channel_id, comando)
-        if sucesso:
-            print(f"Roll {i}/{quantidade} enviado com sucesso!")
-        else:
-            print(f"⚠️ Erro ao enviar roll {i}/{quantidade}")
-            
-        # Intervalo fixo de 4 segundos entre cada envio
-        time.sleep(4.0)
+    print(f"🚀 Iniciando ciclo contínuo de {quantidade} rolls...")
+    enviar_mensagem(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
+    time.sleep(3.0)
+
+    # Ciclo for garantido que não aborta em caso de erros pontuais
+    for numero in range(1, quantidade + 1):
+        sucesso = enviar_mensagem(token, channel_id, comando)
         
-    enviar_mensagem_api(token, channel_id, "✅ *Farm concluído com sucesso!*")
-    print("✅ Processo concluído!")
+        if sucesso:
+            print(f"Roll {numero}/{quantidade} enviado com sucesso")
+        else:
+            print(f"⚠️ Não foi possível confirmar o envio do roll {numero}/{quantidade}")
+            
+        # Intervalo fixo de segurança entre envios
+        time.sleep(4.0)
+
+    enviar_mensagem(token, channel_id, "✅ *Farm concluído com sucesso!*")
+    print("✅ Execução finalizada com sucesso.")
 
 @app.route('/')
 def index():
@@ -118,9 +124,8 @@ def iniciar_farm():
 
     categoria = request.form.get('categoria', 'wa')
     
-    # Executa em uma thread isolada usando requests diretamente
     threading.Thread(
-        target=executar_farm_direto, 
+        target=executar_farm_thread, 
         args=(token, channel_id, quantidade, categoria), 
         daemon=True
     ).start()
