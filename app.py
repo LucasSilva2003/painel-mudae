@@ -56,9 +56,9 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
 
     try:
         if inicio_roll == 1:
-            enviar_mensagem(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
+            enviar_mensagem(token, channel_id, f"🤖 *Federação Tempest: Iniciando farm de {quantidade} rolls...*")
         else:
-            enviar_mensagem(token, channel_id, f"🔄 *Retomando farm a partir do roll {inicio_roll}/{quantidade}...*")
+            enviar_mensagem(token, channel_id, f"🔄 *Federação Tempest: Retomando farm a partir do roll {inicio_roll}/{quantidade}...*")
     except Exception:
         pass
 
@@ -100,111 +100,214 @@ HTML_PAGINA = """
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: linear-gradient(135deg, #0d1b2a, #1b263b, #415a77);
-            color: #e0e1dd; 
+            background: #0a192f linear-gradient(135deg, #0d1b2a 0%, #1b263b 50%, #00b4d8 100%);
+            color: #ffffff; 
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 15px;
+            overflow-x: hidden;
+            position: relative;
         }
+        
+        /* Efeito de iluminação Mágica ao fundo */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0,180,216,0.2) 0%, rgba(0,0,0,0) 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .header-logo {
+            text-align: center;
+            margin-bottom: 15px;
+            z-index: 1;
+        }
+        
+        .header-logo h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: #90e0ef;
+            text-transform: uppercase;
+            text-shadow: 0 0 15px rgba(144, 224, 239, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .header-logo p {
+            font-size: 11px;
+            color: #48cae4;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
         .container { 
             width: 100%;
-            max-width: 480px; 
+            max-width: 550px; 
             background: rgba(13, 27, 42, 0.85); 
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(12px);
             padding: 25px; 
-            border-radius: 16px; 
-            border: 1px solid #00b4d8;
-            box-shadow: 0 0 20px rgba(0, 180, 216, 0.3);
+            border-radius: 12px; 
+            border: 2px solid #00b4d8;
+            box-shadow: 0 0 25px rgba(0, 180, 216, 0.4), inset 0 0 15px rgba(0, 180, 216, 0.2);
+            z-index: 1;
         }
-        .header-title {
-            text-align: center;
-            margin-bottom: 20px;
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
         }
-        .header-title h2 { 
-            color: #90e0ef; 
-            font-size: 22px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            text-shadow: 0 0 10px rgba(144, 224, 239, 0.5);
+
+        @media (max-width: 500px) {
+            .form-grid { grid-template-columns: 1fr; }
         }
-        .header-title p {
-            color: #778da9;
-            font-size: 12px;
-            margin-top: 4px;
-        }
-        label { display: block; text-align: left; margin-top: 12px; margin-bottom: 5px; font-size: 13px; color: #90e0ef; }
-        input, select, button { 
+
+        .field-group { display: flex; flex-direction: column; }
+        label { text-align: left; margin-bottom: 4px; font-size: 12px; color: #90e0ef; font-weight: 600; }
+        
+        input, select { 
             width: 100%; 
-            padding: 12px; 
-            margin: 4px 0; 
-            border-radius: 8px; 
-            border: 1px solid #415a77; 
-            font-size: 14px; 
+            padding: 10px 12px; 
+            border-radius: 6px; 
+            border: 1px solid #0077b6; 
+            background: rgba(11, 19, 43, 0.9);
+            color: #ffffff; 
+            font-size: 13px;
+            outline: none;
         }
-        input, select { background: #1b263b; color: #ffffff; outline: none; }
-        input:focus, select:focus { border-color: #00b4d8; box-shadow: 0 0 8px rgba(0, 180, 216, 0.5); }
-        .btn-group { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .btn-start { background: #00b4d8; color: #0d1b2a; font-weight: bold; cursor: pointer; border: none; flex: 1; min-width: 140px; }
-        .btn-resume { background: #52b788; color: #0d1b2a; font-weight: bold; cursor: pointer; border: none; flex: 1; min-width: 140px; display: none; }
-        .btn-stop { background: #e63946; color: white; font-weight: bold; cursor: pointer; border: none; flex: 1; min-width: 140px; }
-        button:disabled { background: #415a77 !important; cursor: not-allowed; opacity: 0.5; }
-        .status-box { margin-top: 20px; padding: 15px; background: #1b263b; border-radius: 10px; border: 1px solid #415a77; text-align: center; }
-        .contador { font-size: 26px; font-weight: bold; color: #90e0ef; margin: 8px 0; }
-        .barra { width: 100%; height: 12px; background: #0d1b2a; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+        
+        input:focus, select:focus { border-color: #90e0ef; box-shadow: 0 0 8px rgba(144, 224, 239, 0.5); }
+
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        
+        .btn-start { 
+            background: #2ec4b6; 
+            color: #0d1b2a; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border: none; 
+            padding: 12px;
+            border-radius: 6px;
+            flex: 1;
+            font-size: 13px;
+            box-shadow: 0 0 10px rgba(46, 196, 182, 0.4);
+        }
+        
+        .btn-resume { 
+            background: #00b4d8; 
+            color: #ffffff; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border: none; 
+            padding: 12px;
+            border-radius: 6px;
+            flex: 1;
+            font-size: 13px;
+            display: none;
+            box-shadow: 0 0 10px rgba(0, 180, 216, 0.4);
+        }
+
+        .btn-stop { 
+            background: #e63946; 
+            color: white; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border: none; 
+            padding: 12px;
+            border-radius: 6px;
+            flex: 1;
+            font-size: 13px;
+        }
+
+        button:disabled { background: #415a77 !important; cursor: not-allowed; opacity: 0.5; box-shadow: none; }
+
+        .status-box { 
+            margin-top: 20px; 
+            padding: 15px; 
+            background: rgba(11, 19, 43, 0.8); 
+            border-radius: 8px; 
+            border: 1px solid #0077b6;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .contador { font-size: 24px; font-weight: bold; color: #ff9ebb; min-width: 65px; text-align: center; }
+        .status-details { flex: 1; }
+        .barra { width: 100%; height: 10px; background: #1b263b; border-radius: 5px; overflow: hidden; margin-top: 5px; }
         .progresso { height: 100%; width: 0%; background: #00b4d8; transition: width 0.3s; }
-        .info-txt { font-size: 13px; color: #e0e1dd; margin: 4px 0; }
-        .footer { font-size: 11px; color: #778da9; text-align: center; margin-top: 15px; }
+        .info-txt { font-size: 12px; color: #e0e1dd; }
+
+        .footer { font-size: 10px; color: #48cae4; text-align: center; margin-top: 15px; z-index: 1; }
     </style>
 </head>
 <body>
+    <div class="header-logo">
+        <h1>💧 FEDERAÇÃO MUDAE TEMPEST</h1>
+        <p>SISTEMA CENTRAL DE ROLAGENS AUTOMÁTICAS</p>
+    </div>
+
     <div class="container">
-        <div class="header-title">
-            <h2>💧 FEDERAÇÃO MUDAE TEMPEST</h2>
-            <p>Painel de Controle de Rolagens</p>
-        </div>
-        
         <form id="farmForm" onsubmit="iniciarFarm(event, false)">
-            <label>Token do Discord:</label>
-            <input type="password" id="token" name="token" required placeholder="Seu token de usuário">
-            
-            <label>ID do Canal:</label>
-            <input type="text" id="channel_id" name="channel_id" required placeholder="Ex: 123456789012345">
-            
-            <label>Quantidade de Rolagens:</label>
-            <input type="number" id="quantidade" name="quantidade" value="15" min="1" required>
-            
-            <label>Categoria:</label>
-            <select id="categoria" name="categoria">
-                <option value="wa">$wa (Anime Mulheres)</option>
-                <option value="wg">$wg (Games Mulheres)</option>
-                <option value="m">$m (Misto)</option>
-                <option value="all">$all (Tudo)</option>
-                <option value="ma">$ma (Anime Homens)</option>
-                <option value="mg">$mg (Games Homens)</option>
-                <option value="w">$w (Mulheres Geral)</option>
-                <option value="h">$h (Homens Geral)</option>
-            </select>
+            <div class="form-grid">
+                <div class="field-group">
+                    <label>Token de Usuário:</label>
+                    <input type="password" id="token" name="token" required placeholder="Cole seu token do Discord">
+                </div>
+                <div class="field-group">
+                    <label>Channel ID:</label>
+                    <input type="text" id="channel_id" name="channel_id" required placeholder="ID do canal de rolagens">
+                </div>
+                <div class="field-group">
+                    <label>Rolagens:</label>
+                    <input type="number" id="quantidade" name="quantidade" value="15" min="1" required>
+                </div>
+                <div class="field-group">
+                    <label>Categoria:</label>
+                    <select id="categoria" name="categoria">
+                        <option value="wa">$wa (Anime Mulheres)</option>
+                        <option value="wg">$wg (Games Mulheres)</option>
+                        <option value="m">$m (Misto)</option>
+                        <option value="all">$all (Tudo)</option>
+                        <option value="ma">$ma (Anime Homens)</option>
+                        <option value="mg">$mg (Games Homens)</option>
+                        <option value="w">$w (Mulheres Geral)</option>
+                        <option value="h">$h (Homens Geral)</option>
+                    </select>
+                </div>
+            </div>
             
             <div class="btn-group">
-                <button type="submit" id="btnIniciar" class="btn-start">🚀 INICIAR</button>
+                <button type="submit" id="btnIniciar" class="btn-start">📌 INICIAR FARM AUTOMÁTICO</button>
                 <button type="button" id="btnRetomar" class="btn-resume" onclick="retomarFarm()">🔄 RETOMAR</button>
-                <button type="button" id="btnParar" onclick="pararFarm()" class="btn-stop" disabled>⏸️ PAUSAR</button>
+                <button type="button" id="btnParar" onclick="pararFarm()" class="btn-stop" disabled>🛑 PARAR ROLAGENS</button>
             </div>
         </form>
 
         <div class="status-box">
-            <div id="contador" class="contador">0/0</div>
-            <div class="barra"><div id="progresso" class="progresso"></div></div>
-            <p id="mensagem" class="info-txt">Aguardando início...</p>
+            <div id="contador" class="contador">0/15</div>
+            <div class="status-details">
+                <p id="mensagem" class="info-txt">Aguardando início...</p>
+                <div class="barra"><div id="progresso" class="progresso"></div></div>
+            </div>
         </div>
-        <div class="footer">Federação Mudae Tempest • Sistema de Automação</div>
     </div>
 
-    <script>
-        let ultimoEstado = {};
+    <div class="footer">Inspirado na Federação Mudae Tempest / Tensei Shitara Slime Datta Ken</div>
 
+    <script>
         async function iniciarFarm(e, retomar = false) {
             if (e) e.preventDefault();
             const formData = new FormData(document.getElementById("farmForm"));
@@ -231,17 +334,15 @@ HTML_PAGINA = """
             try {
                 const res = await fetch("/status");
                 const d = await res.json();
-                ultimoEstado = d;
 
-                document.getElementById("contador").innerText = `${d.enviados || 0}/${d.quantidade || 0}`;
-                document.getElementById("mensagem").innerText = d.mensagem || "Aguardando...";
+                document.getElementById("contador").innerText = `${d.enviados || 0}/${d.quantidade || 15}`;
+                document.getElementById("mensagem").innerText = d.mensagem || "Aguardando início...";
                 let pct = d.quantidade > 0 ? (d.enviados / d.quantidade) * 100 : 0;
                 document.getElementById("progresso").style.width = pct + "%";
                 
                 document.getElementById("btnIniciar").disabled = d.rodando;
                 document.getElementById("btnParar").disabled = !d.rodando;
 
-                // Exibe botão de retomar apenas quando pausado e com rolagens pendentes
                 const podeRetomar = d.pausado && d.enviados < d.quantidade;
                 document.getElementById("btnRetomar").style.display = podeRetomar ? "block" : "none";
             } catch(e) {}
