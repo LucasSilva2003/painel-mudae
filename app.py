@@ -15,7 +15,7 @@ try:
 except Exception as e:
     db = None
 
-def atualizar_status(rodando, enviados, quantidade, mensagem, pausado=False):
+def atualizar_status(channel_id, rodando, enviados, quantidade, mensagem, pausado=False):
     dados = {
         "rodando": rodando,
         "enviados": enviados,
@@ -25,7 +25,7 @@ def atualizar_status(rodando, enviados, quantidade, mensagem, pausado=False):
     }
     if db:
         try:
-            db.set("farm_status", json.dumps(dados))
+            db.set(f"farm_status:{channel_id}", json.dumps(dados))
         except Exception:
             pass
 
@@ -45,14 +45,14 @@ def enviar_mensagem(token, channel_id, conteudo):
 
 def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1):
     if db:
-        db.set("parar_farm", "0")
+        db.set(f"parar_farm:{channel_id}", "0")
 
     comando = categoria if categoria.startswith("$") else f"${categoria}"
     
     if inicio_roll > 1:
-        atualizar_status(True, inicio_roll - 1, quantidade, f"Retomando do roll {inicio_roll}...", pausado=False)
+        atualizar_status(channel_id, True, inicio_roll - 1, quantidade, f"Retomando do roll {inicio_roll}...", pausado=False)
     else:
-        atualizar_status(True, 0, quantidade, "Iniciando rolagens...", pausado=False)
+        atualizar_status(channel_id, True, 0, quantidade, "Iniciando rolagens...", pausado=False)
 
     try:
         if inicio_roll == 1:
@@ -65,20 +65,20 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
     time.sleep(2)
 
     for numero in range(inicio_roll, quantidade + 1):
-        # Checa se foi solicitado para pausar
-        if db and db.get("parar_farm") == "1":
+        # Checa a flag de parada específica para este canal
+        if db and db.get(f"parar_farm:{channel_id}") == "1":
             try:
                 enviar_mensagem(token, channel_id, f"⏸️ *Farm pausado no roll {numero-1}/{quantidade}.*")
             except Exception:
                 pass
-            atualizar_status(False, numero - 1, quantidade, f"⏸️ Pausado no roll {numero-1}/{quantidade}", pausado=True)
+            atualizar_status(channel_id, False, numero - 1, quantidade, f"⏸️ Pausado no roll {numero-1}/{quantidade}", pausado=True)
             return
 
         try:
             msg_id = enviar_mensagem(token, channel_id, comando)
-            atualizar_status(True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
+            atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
         except Exception as e:
-            atualizar_status(True, numero, quantidade, f"Erro no roll {numero}.", pausado=False)
+            atualizar_status(channel_id, True, numero, quantidade, f"Erro no roll {numero}.", pausado=False)
 
         if numero < quantidade:
             time.sleep(4)
@@ -88,7 +88,7 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
     except Exception:
         pass
 
-    atualizar_status(False, quantidade, quantidade, "✅ Farm Concluído!", pausado=False)
+    atualizar_status(channel_id, False, quantidade, quantidade, "✅ Farm Concluído!", pausado=False)
 
 HTML_PAGINA = """
 <!DOCTYPE html>
@@ -188,7 +188,7 @@ HTML_PAGINA = """
 <body>
     <div class="header-logo">
         <h1>💧 FEDERAÇÃO MUDAE TEMPEST</h1>
-        <p>PAINEL DE CONTROLADORIA DE ROLLS</p>
+        <p>PAINEL DE CONTROLADORIA MULTI-SESSÃO</p>
     </div>
 
     <div class="container">
@@ -199,8 +199,8 @@ HTML_PAGINA = """
                     <input type="password" id="token" name="token" required placeholder="Cole seu token">
                 </div>
                 <div class="field-group">
-                    <label>Channel ID:</label>
-                    <input type="text" id="channel_id" name="channel_id" required placeholder="ID do canal">
+                    <label>Channel ID (Identificador):</label>
+                    <input type="text" id="channel_id" name="channel_id" required placeholder="ID do canal" oninput="atualizarStatus()">
                 </div>
                 <div class="field-group">
                     <label>Rolagens Total:</label>
@@ -223,7 +223,7 @@ HTML_PAGINA = """
             
             <div class="btn-group">
                 <button type="button" id="btnIniciar" class="btn-start" onclick="iniciarFarm(false)">🚀 INICIAR DO ZERO</button>
-                <button type="button" id="btnRetomar" class="btn-resume" onclick="iniciarFarm(true)">▶️ RETOMAR</button>
+                <button type="button" id="btnRetomar" class="btn-resume" onclick="iniciarFarm(true)" disabled>▶️ RETOMAR</button>
                 <button type="button" id="btnParar" class="btn-stop" onclick="pararFarm()" disabled>⏸️ PAUSAR</button>
             </div>
         </form>
@@ -231,7 +231,7 @@ HTML_PAGINA = """
         <div class="status-box">
             <div id="contador" class="contador">0/15</div>
             <div class="status-details">
-                <p id="mensagem" class="info-txt">Aguardando início...</p>
+                <p id="mensagem" class="info-txt">Informe o Channel ID...</p>
                 <div class="barra"><div id="progresso" class="progresso"></div></div>
             </div>
         </div>
@@ -245,10 +245,14 @@ HTML_PAGINA = """
             const res = await fetch("/iniciar", { method: "POST", body: formData });
             const data = await res.json();
             if (data.erro) alert(data.erro);
+            else atualizarStatus();
         }
 
         async function pararFarm() {
-            const res = await fetch("/parar", { method: "POST" });
+            const channelId = document.getElementById("channel_id").value.trim();
+            if (!channelId) return alert("Insira o Channel ID!");
+
+            const res = await fetch(`/parar?channel_id=${channelId}`, { method: "POST" });
             const data = await res.json();
             if (data.sucesso) {
                 document.getElementById("mensagem").innerText = "Solicitando pausa...";
@@ -256,23 +260,31 @@ HTML_PAGINA = """
         }
 
         async function atualizarStatus() {
+            const channelId = document.getElementById("channel_id").value.trim();
+            if (!channelId) {
+                document.getElementById("mensagem").innerText = "Insira o Channel ID para carregar o status.";
+                document.getElementById("contador").innerText = "0/0";
+                document.getElementById("progresso").style.width = "0%";
+                document.getElementById("btnIniciar").disabled = false;
+                document.getElementById("btnParar").disabled = true;
+                document.getElementById("btnRetomar").disabled = true;
+                return;
+            }
+
             try {
-                const res = await fetch("/status");
+                const res = await fetch(`/status?channel_id=${channelId}`);
                 const d = await res.json();
 
                 document.getElementById("contador").innerText = `${d.enviados || 0}/${d.quantidade || 15}`;
-                document.getElementById("mensagem").innerText = d.mensagem || "Aguardando início...";
+                document.getElementById("mensagem").innerText = d.mensagem || "Pronto para iniciar.";
                 let pct = d.quantidade > 0 ? (d.enviados / d.quantidade) * 100 : 0;
                 document.getElementById("progresso").style.width = pct + "%";
                 
-                // Regras dos botões:
                 document.getElementById("btnIniciar").disabled = d.rodando;
                 document.getElementById("btnParar").disabled = !d.rodando;
 
-                // O botão de RETOMAR só habilita se estiver pausado e ainda sobrarem rolagens
                 const podeRetomar = d.pausado && (d.enviados < d.quantidade);
                 document.getElementById("btnRetomar").disabled = !podeRetomar;
-                
             } catch(e) {}
         }
         setInterval(atualizarStatus, 2000);
@@ -287,15 +299,18 @@ def index():
 
 @app.route("/iniciar", methods=["POST"])
 def iniciar():
-    status_raw = db.get("farm_status") if db else None
+    channel_id = request.form.get("channel_id", "").strip()
+    if not channel_id:
+        return jsonify({"erro": "Channel ID é obrigatório!"})
+
+    status_raw = db.get(f"farm_status:{channel_id}") if db else None
     status = json.loads(status_raw) if status_raw else {}
     
     if status.get("rodando"):
-        return jsonify({"erro": "Um farm já está em execução!"})
+        return jsonify({"erro": "Já existe um farm rodando neste canal!"})
 
     retomar = request.form.get("retomar") == "true"
     token = request.form.get("token", "").strip()
-    channel_id = request.form.get("channel_id", "").strip()
     categoria = request.form.get("categoria", "wa").strip()
     
     try:
@@ -317,14 +332,20 @@ def iniciar():
 
 @app.route("/parar", methods=["POST"])
 def parar():
-    if db:
-        db.set("parar_farm", "1")
+    channel_id = request.args.get("channel_id", "").strip()
+    if db and channel_id:
+        db.set(f"parar_farm:{channel_id}", "1")
     return jsonify({"sucesso": True})
 
 @app.route("/status")
 def get_status():
-    status_raw = db.get("farm_status") if db else None
+    channel_id = request.args.get("channel_id", "").strip()
+    if not channel_id:
+        return jsonify({"rodando": False})
+
+    status_raw = db.get(f"farm_status:{channel_id}") if db else None
     return jsonify(json.loads(status_raw) if status_raw else {"rodando": False})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+    
