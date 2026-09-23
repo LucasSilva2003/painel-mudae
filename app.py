@@ -13,7 +13,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 db = None
 try:
     db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=2)
-    db.ping() # Testa a conexão
+    db.ping()
 except Exception:
     db = None
 
@@ -68,15 +68,26 @@ def enviar_mensagem(token, channel_id, conteudo):
     url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
     headers = {"Authorization": token, "Content-Type": "application/json"}
     
-    while True:
-        res = requests.post(url, headers=headers, json={"content": conteudo}, timeout=10)
-        if res.status_code in [200, 201]:
-            return res.json().get("id")
-        elif res.status_code == 429:
-            espera = res.json().get("retry_after", 4.0)
-            time.sleep(float(espera) + 0.5)
-        else:
-            raise Exception(f"HTTP {res.status_code}: {res.text}")
+    tentativas = 0
+    while tentativas < 5:
+        try:
+            res = requests.post(url, headers=headers, json={"content": conteudo}, timeout=15)
+            if res.status_code in [200, 201]:
+                return res.json().get("id")
+            elif res.status_code == 429:
+                data_json = res.json()
+                espera = float(data_json.get("retry_after", 5.0))
+                time.sleep(espera + 1.0)
+            elif res.status_code in [401, 403]:
+                raise Exception("Token inválido ou sem permissão no canal.")
+            else:
+                tentativas += 1
+                time.sleep(3)
+        except requests.exceptions.RequestException:
+            tentativas += 1
+            time.sleep(3)
+            
+    raise Exception("Falha ao enviar mensagem após várias tentativas.")
 
 def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1):
     definir_parar(channel_id, "0")
@@ -102,7 +113,8 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
             atualizar_status(channel_id, True, numero, quantidade, f"Erro no roll {numero}: {str(e)[:30]}", pausado=False)
 
         if numero < quantidade:
-            time.sleep(4)
+            # Aumentado para 5 segundos para prevenir bloqueios de rate limit do Discord
+            time.sleep(5)
 
     atualizar_status(channel_id, False, quantidade, quantidade, "✅ Farm Concluído!", pausado=False)
 
