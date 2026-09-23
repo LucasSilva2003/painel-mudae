@@ -93,7 +93,6 @@ def executar_farm_thread(token, channel_id, quantidade, categoria):
     enviar_mensagem(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
     time.sleep(3.0)
 
-    # Ciclo for garantido que não aborta em caso de erros pontuais
     for numero in range(1, quantidade + 1):
         sucesso = enviar_mensagem(token, channel_id, comando)
         
@@ -102,7 +101,7 @@ def executar_farm_thread(token, channel_id, quantidade, categoria):
         else:
             print(f"⚠️ Não foi possível confirmar o envio do roll {numero}/{quantidade}")
             
-        # Intervalo fixo de segurança entre envios
+        # time.sleep alinhado com o 'if/else', executando em TODOS os rolls:
         time.sleep(4.0)
 
     enviar_mensagem(token, channel_id, "✅ *Farm concluído com sucesso!*")
