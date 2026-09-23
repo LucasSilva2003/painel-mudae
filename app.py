@@ -8,12 +8,17 @@ import os
 
 app = Flask(__name__)
 
-# Conexão ao Redis interno do Render
+# Conexão ao Redis interno do Render com fallback seguro
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+db = None
 try:
-    db = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=2)
+    db.ping() # Testa a conexão
 except Exception:
     db = None
+
+# Fallback em memória caso o Redis falhe
+memoria_local = {}
 
 def atualizar_status(channel_id, rodando, enviados, quantidade, mensagem, pausado=False):
     dados = {
@@ -23,11 +28,41 @@ def atualizar_status(channel_id, rodando, enviados, quantidade, mensagem, pausad
         "mensagem": mensagem,
         "pausado": pausado
     }
-    if db and channel_id:
+    if channel_id:
+        if db:
+            try:
+                db.set(f"farm_status:{channel_id}", json.dumps(dados))
+                return
+            except Exception:
+                pass
+        memoria_local[f"farm_status:{channel_id}"] = json.dumps(dados)
+
+def obter_status_armazenado(channel_id):
+    if db:
         try:
-            db.set(f"farm_status:{channel_id}", json.dumps(dados))
+            val = db.get(f"farm_status:{channel_id}")
+            if val:
+                return val
         except Exception:
             pass
+    return memoria_local.get(f"farm_status:{channel_id}")
+
+def definir_parar(channel_id, valor):
+    if db:
+        try:
+            db.set(f"parar_farm:{channel_id}", valor)
+            return
+        except Exception:
+            pass
+    memoria_local[f"parar_farm:{channel_id}"] = valor
+
+def verificar_parar(channel_id):
+    if db:
+        try:
+            return db.get(f"parar_farm:{channel_id}") == "1"
+        except Exception:
+            pass
+    return memoria_local.get(f"parar_farm:{channel_id}") == "1"
 
 def enviar_mensagem(token, channel_id, conteudo):
     url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
@@ -44,8 +79,7 @@ def enviar_mensagem(token, channel_id, conteudo):
             raise Exception(f"HTTP {res.status_code}: {res.text}")
 
 def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1):
-    if db:
-        db.set(f"parar_farm:{channel_id}", "0")
+    definir_parar(channel_id, "0")
 
     comando = categoria if categoria.startswith("$") else f"${categoria}"
     
@@ -57,15 +91,15 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
     time.sleep(2)
 
     for numero in range(inicio_roll, quantidade + 1):
-        if db and db.get(f"parar_farm:{channel_id}") == "1":
+        if verificar_parar(channel_id):
             atualizar_status(channel_id, False, numero - 1, quantidade, f"⏸️ Pausado no roll {numero-1}/{quantidade}", pausado=True)
             return
 
         try:
             enviar_mensagem(token, channel_id, comando)
             atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
-        except Exception:
-            atualizar_status(channel_id, True, numero, quantidade, f"Erro no roll {numero}.", pausado=False)
+        except Exception as e:
+            atualizar_status(channel_id, True, numero, quantidade, f"Erro no roll {numero}: {str(e)[:30]}", pausado=False)
 
         if numero < quantidade:
             time.sleep(4)
@@ -92,7 +126,6 @@ HTML_PAGINA = """
             justify-content: center;
             padding: 15px;
         }
-
         .header-logo { text-align: center; margin-bottom: 15px; }
         .header-logo h1 {
             font-size: 22px;
@@ -102,7 +135,6 @@ HTML_PAGINA = """
             text-shadow: 0 0 12px rgba(144, 224, 239, 0.8);
         }
         .header-logo p { font-size: 11px; color: #48cae4; margin-top: 2px; }
-
         .container { 
             width: 100%;
             max-width: 520px; 
@@ -113,13 +145,10 @@ HTML_PAGINA = """
             border: 2px solid #00b4d8;
             box-shadow: 0 0 20px rgba(0, 180, 216, 0.4);
         }
-
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
-
         .field-group { display: flex; flex-direction: column; }
         label { margin-bottom: 4px; font-size: 12px; color: #90e0ef; font-weight: 600; }
-        
         input, select { 
             width: 100%; 
             padding: 10px; 
@@ -129,9 +158,7 @@ HTML_PAGINA = """
             color: #ffffff; 
             font-size: 13px;
         }
-
         .btn-group { display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap; }
-        
         button {
             padding: 12px;
             border-radius: 6px;
@@ -142,13 +169,10 @@ HTML_PAGINA = """
             flex: 1;
             min-width: 120px;
         }
-
         .btn-start { background: #2ec4b6; color: #0d1b2a; }
         .btn-resume { background: #00b4d8; color: #ffffff; }
         .btn-stop { background: #e63946; color: white; }
-
         button:disabled { background: #415a77 !important; cursor: not-allowed; opacity: 0.4; }
-
         .status-box { 
             margin-top: 15px; 
             padding: 12px; 
@@ -159,7 +183,6 @@ HTML_PAGINA = """
             align-items: center;
             gap: 12px;
         }
-
         .contador { font-size: 22px; font-weight: bold; color: #ff9ebb; min-width: 60px; text-align: center; }
         .status-details { flex: 1; }
         .barra { width: 100%; height: 10px; background: #1b263b; border-radius: 5px; overflow: hidden; margin-top: 4px; }
@@ -286,7 +309,7 @@ def iniciar():
     if not channel_id:
         return jsonify({"erro": "Channel ID é obrigatório!"})
 
-    status_raw = db.get(f"farm_status:{channel_id}") if db else None
+    status_raw = obter_status_armazenado(channel_id)
     status = json.loads(status_raw) if status_raw else {}
     
     if status.get("rodando"):
@@ -316,24 +339,22 @@ def iniciar():
 @app.route("/parar", methods=["POST"])
 def parar():
     channel_id = request.args.get("channel_id", "").strip()
-    if db and channel_id:
-        db.set(f"parar_farm:{channel_id}", "1")
+    if channel_id:
+        definir_parar(channel_id, "1")
     return jsonify({"sucesso": True})
 
 @app.route("/status")
 def get_status():
     channel_id = request.args.get("channel_id", "").strip()
-    if not channel_id or not db:
+    if not channel_id:
         return jsonify({"rodando": False, "enviados": 0, "quantidade": 0, "mensagem": "Aguardando canal..."})
 
-    status_raw = db.get(f"farm_status:{channel_id}")
+    status_raw = obter_status_armazenado(channel_id)
     return jsonify(json.loads(status_raw) if status_raw else {"rodando": False, "enviados": 0, "quantidade": 0})
 
-# TRATAMENTO DE ERRO 404 (Para nunca mais dar a tela branca de erro)
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template_string(HTML_PAGINA), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-    
