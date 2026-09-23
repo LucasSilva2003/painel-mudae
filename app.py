@@ -65,41 +65,60 @@ def executar_farm_thread(token, channel_id, quantidade, categoria):
     bot = commands.Bot(
         command_prefix="!",
         self_bot=True,
-        heartbeat_timeout=60.0
+        heartbeat_timeout=120.0
     )
 
-    @bot.event
-    async def on_ready():
-        print(f"📡 Conectado como {bot.user.name}. Iniciando tarefas...")
+    async def iniciar_loop_envio():
+        await bot.wait_until_ready()
+        print(f"📡 Conectado como {bot.user.name}. Iniciando envio contínuo...")
+
         try:
             channel = bot.get_channel(int(channel_id))
             if channel is None:
                 channel = await bot.fetch_channel(int(channel_id))
 
             comando = categoria if categoria.startswith("$") else f"${categoria}"
-            await channel.send(f"🤖 *Conectado ao painel web. Iniciando farm de {quantidade} rolls...*")
+            await channel.send(f"🤖 *Painel ativo. Processando {quantidade} rolls...*")
 
             for numero in range(1, quantidade + 1):
-                try:
-                    await channel.send(comando)
-                    print(f"Roll {numero}/{quantidade} enviado com sucesso")
-                except Exception as e:
-                    print(f"⚠️ Falha no envio do roll {numero}: {e}")
-                    traceback.print_exc()
+                enviado = False
+                while not enviado:
+                    try:
+                        await channel.send(comando)
+                        print(f"Roll {numero}/{quantidade} enviado com sucesso")
+                        enviado = True
+                        # Pausa de 4 segundos
+                        await asyncio.sleep(4.0)
 
-                await asyncio.sleep(4.5)
+                    except discord.errors.HTTPException as e:
+                        if e.status == 429:
+                            print(f"⚠️ Rate limit no roll {numero}. Aguardando 8s...")
+                            await asyncio.sleep(8.0)
+                        else:
+                            print(f"⚠️ Erro HTTP ({e.status}) no roll {numero}: {e}")
+                            await asyncio.sleep(4.0)
+
+                    except Exception as err:
+                        print(f"⚠️ Instabilidade de conexão no roll {numero}. Reagendando envio...")
+                        await asyncio.sleep(5.0)
 
             await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
-        except Exception as err:
-            print(f"❌ Erro fatal durante a execução: {err}")
+
+        except Exception as fatal_err:
+            print(f"❌ Erro na tarefa de envio: {fatal_err}")
             traceback.print_exc()
         finally:
             await bot.close()
 
+    @bot.event
+    async def on_ready():
+        # Dispara o loop de envio em background assim que o bot conecta
+        bot.loop.create_task(iniciar_loop_envio())
+
     try:
         loop.run_until_complete(bot.start(token))
     except Exception as e:
-        print(f"❌ Conexão encerrada: {e}")
+        print(f"❌ Sessão encerrada: {e}")
     finally:
         loop.close()
 
