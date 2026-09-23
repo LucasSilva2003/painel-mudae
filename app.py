@@ -3,7 +3,8 @@ import discord
 from discord.ext import commands
 import asyncio
 import threading
-import traceback
+import requests
+import time
 
 app = Flask(__name__)
 
@@ -58,69 +59,48 @@ HTML_PAGINA = """
 </html>
 """
 
-def executar_farm_thread(token, channel_id, quantidade, categoria):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    bot = commands.Bot(
-        command_prefix="!",
-        self_bot=True,
-        heartbeat_timeout=120.0
-    )
-
-    async def iniciar_loop_envio():
-        await bot.wait_until_ready()
-        print(f"📡 Conectado como {bot.user.name}. Iniciando envio contínuo...")
-
-        try:
-            channel = bot.get_channel(int(channel_id))
-            if channel is None:
-                channel = await bot.fetch_channel(int(channel_id))
-
-            comando = categoria if categoria.startswith("$") else f"${categoria}"
-            await channel.send(f"🤖 *Painel ativo. Processando {quantidade} rolls...*")
-
-            for numero in range(1, quantidade + 1):
-                enviado = False
-                while not enviado:
-                    try:
-                        await channel.send(comando)
-                        print(f"Roll {numero}/{quantidade} enviado com sucesso")
-                        enviado = True
-                        # Pausa de 4 segundos
-                        await asyncio.sleep(4.0)
-
-                    except discord.errors.HTTPException as e:
-                        if e.status == 429:
-                            print(f"⚠️ Rate limit no roll {numero}. Aguardando 8s...")
-                            await asyncio.sleep(8.0)
-                        else:
-                            print(f"⚠️ Erro HTTP ({e.status}) no roll {numero}: {e}")
-                            await asyncio.sleep(4.0)
-
-                    except Exception as err:
-                        print(f"⚠️ Instabilidade de conexão no roll {numero}. Reagendando envio...")
-                        await asyncio.sleep(5.0)
-
-            await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
-
-        except Exception as fatal_err:
-            print(f"❌ Erro na tarefa de envio: {fatal_err}")
-            traceback.print_exc()
-        finally:
-            await bot.close()
-
-    @bot.event
-    async def on_ready():
-        # Dispara o loop de envio em background assim que o bot conecta
-        bot.loop.create_task(iniciar_loop_envio())
-
+def enviar_mensagem_api(token, channel_id, conteudo):
+    """Envia mensagem diretamente via API HTTP do Discord sem depender de sockets."""
+    url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+    headers = {
+        "Authorization": token,
+        "Content-Type": "application/json"
+    }
+    payload = {"content": conteudo}
+    
     try:
-        loop.run_until_complete(bot.start(token))
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code == 429:
+            # Rate limit atingido, lê o tempo de espera retornado pelo Discord
+            dados = res.json()
+            espera = dados.get("retry_after", 5)
+            print(f"⚠️ Rate limit detectado. Aguardando {espera}s...")
+            time.sleep(espera)
+            # Tenta reenviar a mensagem
+            requests.post(url, headers=headers, json=payload)
+        return res.status_code in [200, 201]
     except Exception as e:
-        print(f"❌ Sessão encerrada: {e}")
-    finally:
-        loop.close()
+        print(f"⚠️ Erro no envio HTTP: {e}")
+        return False
+
+def executar_farm_direto(token, channel_id, quantidade, categoria):
+    comando = categoria if categoria.startswith("$") else f"${categoria}"
+    
+    print(f"🚀 Iniciando ciclo direto de {quantidade} rolls...")
+    enviar_mensagem_api(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls via API...*")
+    
+    for i in range(1, quantidade + 1):
+        sucesso = enviar_mensagem_api(token, channel_id, comando)
+        if sucesso:
+            print(f"Roll {i}/{quantidade} enviado com sucesso!")
+        else:
+            print(f"⚠️ Erro ao enviar roll {i}/{quantidade}")
+            
+        # Intervalo fixo de 4 segundos entre cada envio
+        time.sleep(4.0)
+        
+    enviar_mensagem_api(token, channel_id, "✅ *Farm concluído com sucesso!*")
+    print("✅ Processo concluído!")
 
 @app.route('/')
 def index():
@@ -138,8 +118,9 @@ def iniciar_farm():
 
     categoria = request.form.get('categoria', 'wa')
     
+    # Executa em uma thread isolada usando requests diretamente
     threading.Thread(
-        target=executar_farm_thread, 
+        target=executar_farm_direto, 
         args=(token, channel_id, quantidade, categoria), 
         daemon=True
     ).start()
