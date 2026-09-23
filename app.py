@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import asyncio
 import threading
+import traceback  # Importado para depuração detalhada
 
 app = Flask(__name__)
 
@@ -96,13 +97,24 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
             try:
                 await channel.send(comando)
                 print(f"Roll {numero}/{quantidade} enviado por {bot.user.name}")
-                
-                # Delay de 4 segundos entre todas as mensagens
                 await asyncio.sleep(4)
+
+            except discord.errors.HTTPException as e:
+                if e.status == 429:
+                    print(f"⚠️ Rate Limit no roll {numero}! Aguardando 10 segundos antes de tentar o próximo...")
+                    await asyncio.sleep(10)
+                else:
+                    print(f"⚠️ Erro HTTP no roll {numero}: {e}")
+                    traceback.print_exc()
+                    await asyncio.sleep(4)
 
             except Exception as erro:
                 print(f"⚠️ Erro no roll {numero}: {erro}")
-                break
+                print("--- TRACEBACK DETALHADO DO ERRO ---")
+                traceback.print_exc()
+                print("-----------------------------------")
+                # break removido intencionalmente para não interromper o loop no 1º erro
+                await asyncio.sleep(4)
 
         await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
         await bot.close()
@@ -129,7 +141,6 @@ def iniciar_farm():
     token = request.form.get('token', '').strip()
     channel_id = request.form.get('channel_id', '').strip()
     
-    # Garantia da conversão correta da quantidade recebida pelo formulário
     try:
         quantidade = int(request.form.get('quantidade', 15))
     except (ValueError, TypeError):
@@ -147,3 +158,4 @@ def iniciar_farm():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+    
