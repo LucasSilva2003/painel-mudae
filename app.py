@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 import asyncio
 import threading
-import traceback  # Importado para depuração detalhada
+import traceback
 
 app = Flask(__name__)
 
@@ -58,18 +58,9 @@ HTML_PAGINA = """
 </html>
 """
 
-async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
-    try:
-        quantidade = int(quantidade)
-    except (TypeError, ValueError):
-        print(f"Quantidade inválida: {quantidade!r}")
-        return
-
-    if quantidade <= 0:
-        print("A quantidade deve ser maior que zero.")
-        return
-
-    print(f"Executando {quantidade} rolls")
+def executar_farm_thread(token, channel_id, quantidade, categoria):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     bot = commands.Bot(
         command_prefix="!",
@@ -79,56 +70,36 @@ async def rodar_selfbot_task(token, channel_id, quantidade, categoria):
 
     @bot.event
     async def on_ready():
-        print(f"📡 Conectado como {bot.user.name}")
-        channel = bot.get_channel(int(channel_id))
-
-        if channel is None:
-            try:
+        print(f"📡 Conectado como {bot.user.name}. Iniciando tarefas...")
+        try:
+            channel = bot.get_channel(int(channel_id))
+            if channel is None:
                 channel = await bot.fetch_channel(int(channel_id))
-            except Exception as e:
-                print(f"❌ Canal não encontrado: {e}")
-                await bot.close()
-                return
 
-        comando = categoria if categoria.startswith("$") else f"${categoria}"
-        await channel.send(f"🤖 *Conectado ao painel web. Iniciando farm de {quantidade} rolls...*")
+            comando = categoria if categoria.startswith("$") else f"${categoria}"
+            await channel.send(f"🤖 *Conectado ao painel web. Iniciando farm de {quantidade} rolls...*")
 
-        for numero in range(1, quantidade + 1):
-            try:
-                await channel.send(comando)
-                print(f"Roll {numero}/{quantidade} enviado por {bot.user.name}")
-                await asyncio.sleep(4)
-
-            except discord.errors.HTTPException as e:
-                if e.status == 429:
-                    print(f"⚠️ Rate Limit no roll {numero}! Aguardando 10 segundos antes de tentar o próximo...")
-                    await asyncio.sleep(10)
-                else:
-                    print(f"⚠️ Erro HTTP no roll {numero}: {e}")
+            for numero in range(1, quantidade + 1):
+                try:
+                    await channel.send(comando)
+                    print(f"Roll {numero}/{quantidade} enviado com sucesso")
+                except Exception as e:
+                    print(f"⚠️ Falha no envio do roll {numero}: {e}")
                     traceback.print_exc()
-                    await asyncio.sleep(4)
 
-            except Exception as erro:
-                print(f"⚠️ Erro no roll {numero}: {erro}")
-                print("--- TRACEBACK DETALHADO DO ERRO ---")
-                traceback.print_exc()
-                print("-----------------------------------")
-                # break removido intencionalmente para não interromper o loop no 1º erro
-                await asyncio.sleep(4)
+                await asyncio.sleep(4.5)
 
-        await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
-        await bot.close()
+            await channel.send("✅ *Farm concluído com sucesso! Desconectando.*")
+        except Exception as err:
+            print(f"❌ Erro fatal durante a execução: {err}")
+            traceback.print_exc()
+        finally:
+            await bot.close()
 
     try:
-        await bot.start(token)
+        loop.run_until_complete(bot.start(token))
     except Exception as e:
-        print(f"❌ Erro ao iniciar o bot: {e}")
-
-def start_bot_thread(token, channel_id, quantidade, categoria):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(rodar_selfbot_task(token, channel_id, quantidade, categoria))
+        print(f"❌ Conexão encerrada: {e}")
     finally:
         loop.close()
 
@@ -149,7 +120,7 @@ def iniciar_farm():
     categoria = request.form.get('categoria', 'wa')
     
     threading.Thread(
-        target=start_bot_thread, 
+        target=executar_farm_thread, 
         args=(token, channel_id, quantidade, categoria), 
         daemon=True
     ).start()
@@ -158,4 +129,3 @@ def iniciar_farm():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-    
