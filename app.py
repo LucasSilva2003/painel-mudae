@@ -17,7 +17,9 @@ HTML_PAGINA = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Mudae Auto-Farm Painel</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -96,6 +98,7 @@ HTML_PAGINA = """
         <form action="/iniciar" method="POST">
 
             <label>Insira seu Token do Discord (Usuário):</label>
+
             <input
                 type="password"
                 name="token"
@@ -103,7 +106,9 @@ HTML_PAGINA = """
                 required
             >
 
+
             <label>ID do Canal do Discord (Onde vai rolar):</label>
+
             <input
                 type="text"
                 name="channel_id"
@@ -111,7 +116,9 @@ HTML_PAGINA = """
                 required
             >
 
+
             <label>Quantidade de Rolagens:</label>
+
             <input
                 type="number"
                 name="quantidade"
@@ -120,23 +127,36 @@ HTML_PAGINA = """
                 required
             >
 
+
             <label>Categoria:</label>
+
             <select name="categoria">
-                <option value="wa">$wa - Anime Mulheres</option>
-                <option value="wg">$wg - Games Mulheres</option>
-                <option value="m">$m - Misto</option>
-                <option value="all">$all - Tudo</option>
-                <option value="ma">$ma - Anime Homens</option>
-                <option value="mg">$mg - Games Homens</option>
-                <option value="w">$w - Mulheres Geral</option>
-                <option value="h">$h - Homens Geral</option>
+
+                <option value="wa">$wa (Anime Mulheres)</option>
+
+                <option value="wg">$wg (Games Mulheres)</option>
+
+                <option value="m">$m (Misto)</option>
+
+                <option value="all">$all (Tudo)</option>
+
+                <option value="ma">$ma (Anime Homens)</option>
+
+                <option value="mg">$mg (Games Homens)</option>
+
+                <option value="w">$w (Mulheres Geral)</option>
+
+                <option value="h">$h (Homens Geral)</option>
+
             </select>
+
 
             <button type="submit">
                 🚀 INICIAR FARM AUTOMÁTICO
             </button>
 
         </form>
+
 
         <div class="footer">
             ⚠️ Risco de ban por conta do usuário. Use com moderação.
@@ -151,11 +171,11 @@ HTML_PAGINA = """
 
 
 # ============================================================
-# LÓGICA DE ENVIO VIA USER TOKEN (SELF-BOT)
+# LÓGICA DE ENVIO VIA API HTTP (SELF-BOT)
 # ============================================================
 
-def enviar_mensagem(token, channel_id, conteudo):
-    """Realiza o envio direto à API HTTP do Discord usando User Token."""
+def enviar_mensagem_com_resposta(token, channel_id, conteudo):
+    """Realiza o envio direto à API HTTP do Discord e retorna o ID da mensagem se bem-sucedido."""
     url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
     headers = {
         "Authorization": token,
@@ -164,25 +184,20 @@ def enviar_mensagem(token, channel_id, conteudo):
     payload = {"content": conteudo}
     
     while True:
-        try:
-            res = requests.post(url, headers=headers, json=payload, timeout=10)
-            
-            if res.status_code in [200, 201]:
-                return True
-            
-            elif res.status_code == 429:
-                # Rate limit atingido: aguarda o tempo informado pelo Discord
-                dados = res.json()
-                espera = dados.get("retry_after", 4.0)
-                print(f"⚠️ Rate limit detectado. Aguardando {espera}s para tentar novamente...")
-                time.sleep(float(espera) + 0.5)
-            else:
-                print(f"⚠️ Erro HTTP {res.status_code}: {res.text}")
-                return False
-                
-        except Exception as e:
-            print(f"⚠️ Falha de conexão na requisição: {e}. Re-tentando em 3s...")
-            time.sleep(3.0)
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if res.status_code in [200, 201]:
+            dados = res.json()
+            return True, dados.get("id")
+        
+        elif res.status_code == 429:
+            # Rate limit atingido
+            dados = res.json()
+            espera = dados.get("retry_after", 4.0)
+            print(f"⚠️ Rate limit detectado. Aguardando {espera}s para tentar novamente...")
+            time.sleep(float(espera) + 0.5)
+        else:
+            raise Exception(f"Erro HTTP {res.status_code}: {res.text}")
 
 
 def executar_farm_thread(token, channel_id, quantidade, categoria):
@@ -190,96 +205,72 @@ def executar_farm_thread(token, channel_id, quantidade, categoria):
     
     print()
     print("=" * 50)
-    print(f"🚀 Iniciando ciclo de {quantidade} rolls...")
+    print(f"🚀 Iniciando farm de {quantidade} rolls...")
     print(f"🎲 Comando: {comando}")
     print("=" * 50)
 
-    enviar_mensagem(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
+    try:
+        enviar_mensagem_com_resposta(token, channel_id, f"🤖 *Iniciando farm de {quantidade} rolls...*")
+    except Exception:
+        pass
+
     time.sleep(3.0)
 
+    # --------------------------------------------------------
+    # LOOP COM OS PRINTS SOLICITADOS
+    # --------------------------------------------------------
     for numero in range(1, quantidade + 1):
-        sucesso = enviar_mensagem(token, channel_id, comando)
-        
-        if sucesso:
-            print(f"🎲 Roll {numero}/{quantidade} enviado com sucesso.")
-        else:
-            print(f"❌ Não foi possível confirmar o envio do roll {numero}/{quantidade}.")
-            
-        # Intervalo fixo de segurança entre cada roll
-        time.sleep(4.0)
+        print(f"ANTES DO ENVIO: {numero}/{quantidade}")
 
-    enviar_mensagem(token, channel_id, f"✅ *Farm concluído! {quantidade} rolls foram enviados.*")
-    print()
-    print(f"✅ FINALIZADO: {quantidade}/{quantidade}")
+        try:
+            sucesso, msg_id = enviar_mensagem_com_resposta(token, channel_id, comando)
+            print(f"ENVIADO: {numero}/{quantidade} - ID {msg_id}")
+        except Exception as e:
+            print(f"ERRO NO ENVIO {numero}: {e}")
+
+        time.sleep(4)
+
+    print("FOR TERMINOU")
+
+    try:
+        enviar_mensagem_com_resposta(token, channel_id, f"✅ *Farm concluído! {quantidade} rolls foram enviados.*")
+    except Exception:
+        pass
 
 
 # ============================================================
 # ROTAS FLASK
 # ============================================================
 
-@app.route('/')
+@app.route("/")
 def index():
     return render_template_string(HTML_PAGINA)
 
 
-@app.route('/iniciar', methods=['POST'])
+@app.route("/iniciar", methods=["POST"])
 def iniciar_farm():
-    # --------------------------------------------------------
-    # Recebe os dados do formulário
-    # --------------------------------------------------------
-    token = request.form.get('token', '').strip()
-    channel_id = request.form.get('channel_id', '').strip()
-    categoria = request.form.get('categoria', 'wa').strip()
 
-    # --------------------------------------------------------
-    # Validações de entrada
-    # --------------------------------------------------------
+    token = request.form.get("token", "").strip()
+    channel_id = request.form.get("channel_id", "").strip()
+    categoria = request.form.get("categoria", "wa").strip()
+
     try:
-        quantidade = int(request.form.get('quantidade', '15'))
+        quantidade = int(request.form.get("quantidade", "15"))
     except (ValueError, TypeError):
-        return """
-        <h3>❌ Quantidade inválida.</h3>
-        <a href="/">Voltar</a>
-        """
+        return "<h3>❌ Quantidade inválida.</h3><a href='/'>Voltar</a>"
 
     if quantidade < 1:
-        return """
-        <h3>❌ A quantidade precisa ser maior que 0.</h3>
-        <a href="/">Voltar</a>
-        """
+        return "<h3>❌ A quantidade precisa ser maior que 0.</h3><a href='/'>Voltar</a>"
 
-    if not token:
-        return """
-        <h3>❌ Token do usuário não informado.</h3>
-        <a href="/">Voltar</a>
-        """
+    if not token or not channel_id:
+        return "<h3>❌ Token e ID do Canal são obrigatórios.</h3><a href='/'>Voltar</a>"
 
-    if not channel_id:
-        return """
-        <h3>❌ ID do canal não informado.</h3>
-        <a href="/">Voltar</a>
-        """
-
-    try:
-        int(channel_id)
-    except ValueError:
-        return """
-        <h3>❌ ID do canal inválido.</h3>
-        <a href="/">Voltar</a>
-        """
-
-    # --------------------------------------------------------
-    # Dispara a thread de execução do farm
-    # --------------------------------------------------------
     threading.Thread(
-        target=executar_farm_thread, 
-        args=(token, channel_id, quantidade, categoria), 
+        target=executar_farm_thread,
+        args=(token, channel_id, quantidade, categoria),
         daemon=True
     ).start()
 
-    # --------------------------------------------------------
-    # Retorna a tela estilizada de confirmação em HTML
-    # --------------------------------------------------------
     comando_exibicao = categoria if categoria.startswith("$") else f"${categoria}"
 
     return f"""
@@ -287,10 +278,10 @@ def iniciar_farm():
     <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
-        <title>Farm Iniciado</title>
+        <title>Farm iniciado</title>
         <style>
             body {{
-                font-family: Arial;
+                font-family: Arial, sans-serif;
                 background: #23272a;
                 color: white;
                 text-align: center;
@@ -309,9 +300,6 @@ def iniciar_farm():
                 text-decoration: none;
                 font-weight: bold;
             }}
-            a:hover {{
-                text-decoration: underline;
-            }}
         </style>
     </head>
     <body>
@@ -319,9 +307,8 @@ def iniciar_farm():
             <h2>🚀 Farm iniciado!</h2>
             <p>Quantidade solicitada: <strong>{quantidade}</strong></p>
             <p>Comando: <strong>{comando_exibicao}</strong></p>
-            <p>O script enviará os rolls no canal informado a cada 4 segundos.</p>
             <br>
-            <a href="/">← Voltar ao painel</a>
+            <a href="/">← Voltar</a>
         </div>
     </body>
     </html>
@@ -329,16 +316,21 @@ def iniciar_farm():
 
 
 # ============================================================
-# INICIALIZAÇÃO
+# INICIAR FLASK
 # ============================================================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print()
     print("=" * 50)
-    print("🌸 MUDAE FARM CENTRAL (SELF-BOT)")
+    print("🌸 MUDAE FARM CENTRAL")
     print("=" * 50)
     print("🌐 Painel: http://localhost:5000")
     print("=" * 50)
     print()
 
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )
+    
