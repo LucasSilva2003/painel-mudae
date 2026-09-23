@@ -8,6 +8,7 @@ import os
 
 app = Flask(__name__)
 
+# Conexão ao Redis interno do Render
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 try:
     db = redis.Redis.from_url(REDIS_URL, decode_responses=True)
@@ -35,14 +36,14 @@ def enviar_mensagem(token, channel_id, conteudo):
     while True:
         res = requests.post(url, headers=headers, json={"content": conteudo}, timeout=10)
         if res.status_code in [200, 201]:
-            return res.json()
+            return res.json().get("id")
         elif res.status_code == 429:
             espera = res.json().get("retry_after", 4.0)
             time.sleep(float(espera) + 0.5)
         else:
             raise Exception(f"HTTP {res.status_code}: {res.text}")
 
-def executar_farm_thread(token, channel_id, quantidade, categoria, usar_us, inicio_roll=1):
+def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1):
     if db:
         db.set(f"parar_farm:{channel_id}", "0")
 
@@ -53,16 +54,7 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, usar_us, inic
     else:
         atualizar_status(channel_id, True, 0, quantidade, "Iniciando rolagens...", pausado=False)
 
-    try:
-        if inicio_roll == 1:
-            enviar_mensagem(token, channel_id, f"🤖 *Federação Tempest: Iniciando farm de {quantidade} rolls...*")
-        else:
-            enviar_mensagem(token, channel_id, f"🔄 *Federação Tempest: Retomando farm a partir do roll {inicio_roll}/{quantidade}...*")
-    except Exception:
-        pass
-
     time.sleep(2)
-    us_usado = False
 
     for numero in range(inicio_roll, quantidade + 1):
         if db and db.get(f"parar_farm:{channel_id}") == "1":
@@ -70,35 +62,8 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, usar_us, inic
             return
 
         try:
-            resposta = enviar_mensagem(token, channel_id, comando)
-            
-            # Lê o conteúdo e também possíveis embeds retornados pelo Discord/Mudae
-            conteudo_resposta = ""
-            if isinstance(resposta, dict):
-                conteudo_resposta = resposta.get("content", "") or ""
-                for embed in resposta.get("embeds", []):
-                    conteudo_resposta += " " + embed.get("description", "") + " " + embed.get("title", "")
-            
-            conteudo_lower = conteudo_resposta.lower()
-            
-            # Verificação aprimorada para detetar o limite de rolls independentemente da variação exata
-            if "limitado" in conteudo_lower or "min restante" in conteudo_lower or "upvote" in conteudo_lower:
-                if usar_us and not us_usado:
-                    atualizar_status(channel_id, True, numero - 1, quantidade, "⚠️ Rolls esgotados! Usando $us 20...", pausado=False)
-                    enviar_mensagem(token, channel_id, "$us 20")
-                    us_usado = True
-                    time.sleep(3)  # Aguarda a Mudae processar o reset
-                    
-                    # Tenta novamente o comando após o uso do $us
-                    enviar_mensagem(token, channel_id, comando)
-                    atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado ($us ativado).", pausado=False)
-                else:
-                    atualizar_status(channel_id, False, numero - 1, quantidade, "🛑 Rolls esgotados!", pausado=True)
-                    enviar_mensagem(token, channel_id, f"🛑 *Farm pausado: limite de rolls atingido no roll {numero-1}/{quantidade}.*")
-                    return
-            else:
-                atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
-
+            enviar_mensagem(token, channel_id, comando)
+            atualizar_status(channel_id, True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
         except Exception:
             atualizar_status(channel_id, True, numero, quantidade, f"Erro no roll {numero}.", pausado=False)
 
@@ -153,22 +118,6 @@ HTML_PAGINA = """
         @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
 
         .field-group { display: flex; flex-direction: column; }
-        .checkbox-group { 
-            grid-column: span 2; 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            margin-top: 5px; 
-            background: #0b132b; 
-            padding: 8px 12px; 
-            border-radius: 6px; 
-            border: 1px solid #0077b6; 
-        }
-        .checkbox-group input { width: auto; cursor: pointer; }
-        .checkbox-group label { margin-bottom: 0; cursor: pointer; color: #48cae4; font-size: 12px; }
-
-        @media (max-width: 480px) { .checkbox-group { grid-column: span 1; } }
-
         label { margin-bottom: 4px; font-size: 12px; color: #90e0ef; font-weight: 600; }
         
         input, select { 
@@ -251,10 +200,6 @@ HTML_PAGINA = """
                         <option value="w">$w (Mulheres Geral)</option>
                         <option value="h">$h (Homens Geral)</option>
                     </select>
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="usar_us" name="usar_us" value="true">
-                    <label for="usar_us">Usar <b>$us 20</b> automaticamente se os rolls acabarem</label>
                 </div>
             </div>
             
@@ -350,7 +295,6 @@ def iniciar():
     retomar = request.form.get("retomar") == "true"
     token = request.form.get("token", "").strip()
     categoria = request.form.get("categoria", "wa").strip()
-    usar_us = request.form.get("usar_us") == "true"
     
     try:
         quantidade = int(request.form.get("quantidade", 15))
@@ -363,7 +307,7 @@ def iniciar():
 
     threading.Thread(
         target=executar_farm_thread,
-        args=(token, channel_id, quantidade, categoria, usar_us, inicio_roll),
+        args=(token, channel_id, quantidade, categoria, inicio_roll),
         daemon=True
     ).start()
 
@@ -385,6 +329,7 @@ def get_status():
     status_raw = db.get(f"farm_status:{channel_id}")
     return jsonify(json.loads(status_raw) if status_raw else {"rodando": False, "enviados": 0, "quantidade": 0})
 
+# TRATAMENTO DE ERRO 404 (Para nunca mais dar a tela branca de erro)
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template_string(HTML_PAGINA), 200
