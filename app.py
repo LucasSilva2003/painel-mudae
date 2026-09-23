@@ -50,9 +50,9 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
     comando = categoria if categoria.startswith("$") else f"${categoria}"
     
     if inicio_roll > 1:
-        atualizar_status(True, inicio_roll - 1, quantidade, f"Retomando do roll {inicio_roll}...")
+        atualizar_status(True, inicio_roll - 1, quantidade, f"Retomando do roll {inicio_roll}...", pausado=False)
     else:
-        atualizar_status(True, 0, quantidade, "Iniciando rolagens...")
+        atualizar_status(True, 0, quantidade, "Iniciando rolagens...", pausado=False)
 
     try:
         if inicio_roll == 1:
@@ -62,22 +62,23 @@ def executar_farm_thread(token, channel_id, quantidade, categoria, inicio_roll=1
     except Exception:
         pass
 
-    time.sleep(3)
+    time.sleep(2)
 
     for numero in range(inicio_roll, quantidade + 1):
+        # Checa se foi solicitado para pausar
         if db and db.get("parar_farm") == "1":
             try:
-                enviar_mensagem(token, channel_id, f"🛑 *Farm pausado no roll {numero-1}/{quantidade}.*")
+                enviar_mensagem(token, channel_id, f"⏸️ *Farm pausado no roll {numero-1}/{quantidade}.*")
             except Exception:
                 pass
-            atualizar_status(False, numero - 1, quantidade, "⏸️ Farm Pausado!", pausado=True)
+            atualizar_status(False, numero - 1, quantidade, f"⏸️ Pausado no roll {numero-1}/{quantidade}", pausado=True)
             return
 
         try:
             msg_id = enviar_mensagem(token, channel_id, comando)
-            atualizar_status(True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.")
+            atualizar_status(True, numero, quantidade, f"Roll {numero}/{quantidade} enviado.", pausado=False)
         except Exception as e:
-            atualizar_status(True, numero, quantidade, f"Erro no roll {numero}.")
+            atualizar_status(True, numero, quantidade, f"Erro no roll {numero}.", pausado=False)
 
         if numero < quantidade:
             time.sleep(4)
@@ -108,170 +109,101 @@ HTML_PAGINA = """
             align-items: center;
             justify-content: center;
             padding: 15px;
-            overflow-x: hidden;
-            position: relative;
-        }
-        
-        /* Efeito de iluminação Mágica ao fundo */
-        body::before {
-            content: "";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, rgba(0,180,216,0.2) 0%, rgba(0,0,0,0) 70%);
-            z-index: 0;
-            pointer-events: none;
         }
 
-        .header-logo {
-            text-align: center;
-            margin-bottom: 15px;
-            z-index: 1;
-        }
-        
+        .header-logo { text-align: center; margin-bottom: 15px; }
         .header-logo h1 {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 800;
-            letter-spacing: 2px;
             color: #90e0ef;
             text-transform: uppercase;
-            text-shadow: 0 0 15px rgba(144, 224, 239, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            text-shadow: 0 0 12px rgba(144, 224, 239, 0.8);
         }
-
-        .header-logo p {
-            font-size: 11px;
-            color: #48cae4;
-            letter-spacing: 1px;
-            margin-top: 2px;
-        }
+        .header-logo p { font-size: 11px; color: #48cae4; margin-top: 2px; }
 
         .container { 
             width: 100%;
-            max-width: 550px; 
-            background: rgba(13, 27, 42, 0.85); 
-            backdrop-filter: blur(12px);
-            padding: 25px; 
+            max-width: 520px; 
+            background: rgba(13, 27, 42, 0.9); 
+            backdrop-filter: blur(10px);
+            padding: 20px; 
             border-radius: 12px; 
             border: 2px solid #00b4d8;
-            box-shadow: 0 0 25px rgba(0, 180, 216, 0.4), inset 0 0 15px rgba(0, 180, 216, 0.2);
-            z-index: 1;
+            box-shadow: 0 0 20px rgba(0, 180, 216, 0.4);
         }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        @media (max-width: 500px) {
-            .form-grid { grid-template-columns: 1fr; }
-        }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
 
         .field-group { display: flex; flex-direction: column; }
-        label { text-align: left; margin-bottom: 4px; font-size: 12px; color: #90e0ef; font-weight: 600; }
+        label { margin-bottom: 4px; font-size: 12px; color: #90e0ef; font-weight: 600; }
         
         input, select { 
             width: 100%; 
-            padding: 10px 12px; 
+            padding: 10px; 
             border-radius: 6px; 
             border: 1px solid #0077b6; 
-            background: rgba(11, 19, 43, 0.9);
+            background: #0b132b;
             color: #ffffff; 
             font-size: 13px;
-            outline: none;
-        }
-        
-        input:focus, select:focus { border-color: #90e0ef; box-shadow: 0 0 8px rgba(144, 224, 239, 0.5); }
-
-        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
-        
-        .btn-start { 
-            background: #2ec4b6; 
-            color: #0d1b2a; 
-            font-weight: bold; 
-            cursor: pointer; 
-            border: none; 
-            padding: 12px;
-            border-radius: 6px;
-            flex: 1;
-            font-size: 13px;
-            box-shadow: 0 0 10px rgba(46, 196, 182, 0.4);
-        }
-        
-        .btn-resume { 
-            background: #00b4d8; 
-            color: #ffffff; 
-            font-weight: bold; 
-            cursor: pointer; 
-            border: none; 
-            padding: 12px;
-            border-radius: 6px;
-            flex: 1;
-            font-size: 13px;
-            display: none;
-            box-shadow: 0 0 10px rgba(0, 180, 216, 0.4);
         }
 
-        .btn-stop { 
-            background: #e63946; 
-            color: white; 
-            font-weight: bold; 
-            cursor: pointer; 
-            border: none; 
+        .btn-group { display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap; }
+        
+        button {
             padding: 12px;
             border-radius: 6px;
-            flex: 1;
+            border: none;
+            font-weight: bold;
             font-size: 13px;
+            cursor: pointer;
+            flex: 1;
+            min-width: 120px;
         }
 
-        button:disabled { background: #415a77 !important; cursor: not-allowed; opacity: 0.5; box-shadow: none; }
+        .btn-start { background: #2ec4b6; color: #0d1b2a; }
+        .btn-resume { background: #00b4d8; color: #ffffff; }
+        .btn-stop { background: #e63946; color: white; }
+
+        button:disabled { background: #415a77 !important; cursor: not-allowed; opacity: 0.4; }
 
         .status-box { 
-            margin-top: 20px; 
-            padding: 15px; 
-            background: rgba(11, 19, 43, 0.8); 
+            margin-top: 15px; 
+            padding: 12px; 
+            background: #0b132b; 
             border-radius: 8px; 
             border: 1px solid #0077b6;
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
         }
 
-        .contador { font-size: 24px; font-weight: bold; color: #ff9ebb; min-width: 65px; text-align: center; }
+        .contador { font-size: 22px; font-weight: bold; color: #ff9ebb; min-width: 60px; text-align: center; }
         .status-details { flex: 1; }
-        .barra { width: 100%; height: 10px; background: #1b263b; border-radius: 5px; overflow: hidden; margin-top: 5px; }
+        .barra { width: 100%; height: 10px; background: #1b263b; border-radius: 5px; overflow: hidden; margin-top: 4px; }
         .progresso { height: 100%; width: 0%; background: #00b4d8; transition: width 0.3s; }
         .info-txt { font-size: 12px; color: #e0e1dd; }
-
-        .footer { font-size: 10px; color: #48cae4; text-align: center; margin-top: 15px; z-index: 1; }
     </style>
 </head>
 <body>
     <div class="header-logo">
         <h1>💧 FEDERAÇÃO MUDAE TEMPEST</h1>
-        <p>SISTEMA CENTRAL DE ROLAGENS AUTOMÁTICAS</p>
+        <p>PAINEL DE CONTROLADORIA DE ROLLS</p>
     </div>
 
     <div class="container">
-        <form id="farmForm" onsubmit="iniciarFarm(event, false)">
+        <form id="farmForm">
             <div class="form-grid">
                 <div class="field-group">
                     <label>Token de Usuário:</label>
-                    <input type="password" id="token" name="token" required placeholder="Cole seu token do Discord">
+                    <input type="password" id="token" name="token" required placeholder="Cole seu token">
                 </div>
                 <div class="field-group">
                     <label>Channel ID:</label>
-                    <input type="text" id="channel_id" name="channel_id" required placeholder="ID do canal de rolagens">
+                    <input type="text" id="channel_id" name="channel_id" required placeholder="ID do canal">
                 </div>
                 <div class="field-group">
-                    <label>Rolagens:</label>
+                    <label>Rolagens Total:</label>
                     <input type="number" id="quantidade" name="quantidade" value="15" min="1" required>
                 </div>
                 <div class="field-group">
@@ -290,9 +222,9 @@ HTML_PAGINA = """
             </div>
             
             <div class="btn-group">
-                <button type="submit" id="btnIniciar" class="btn-start">📌 INICIAR FARM AUTOMÁTICO</button>
-                <button type="button" id="btnRetomar" class="btn-resume" onclick="retomarFarm()">🔄 RETOMAR</button>
-                <button type="button" id="btnParar" onclick="pararFarm()" class="btn-stop" disabled>🛑 PARAR ROLAGENS</button>
+                <button type="button" id="btnIniciar" class="btn-start" onclick="iniciarFarm(false)">🚀 INICIAR DO ZERO</button>
+                <button type="button" id="btnRetomar" class="btn-resume" onclick="iniciarFarm(true)">▶️ RETOMAR</button>
+                <button type="button" id="btnParar" class="btn-stop" onclick="pararFarm()" disabled>⏸️ PAUSAR</button>
             </div>
         </form>
 
@@ -305,11 +237,8 @@ HTML_PAGINA = """
         </div>
     </div>
 
-    <div class="footer">Inspirado na Federação Mudae Tempest / Tensei Shitara Slime Datta Ken</div>
-
     <script>
-        async function iniciarFarm(e, retomar = false) {
-            if (e) e.preventDefault();
+        async function iniciarFarm(retomar) {
             const formData = new FormData(document.getElementById("farmForm"));
             if (retomar) formData.append("retomar", "true");
             
@@ -318,15 +247,11 @@ HTML_PAGINA = """
             if (data.erro) alert(data.erro);
         }
 
-        function retomarFarm() {
-            iniciarFarm(null, true);
-        }
-
         async function pararFarm() {
             const res = await fetch("/parar", { method: "POST" });
             const data = await res.json();
             if (data.sucesso) {
-                document.getElementById("mensagem").innerText = "Pausando...";
+                document.getElementById("mensagem").innerText = "Solicitando pausa...";
             }
         }
 
@@ -340,11 +265,14 @@ HTML_PAGINA = """
                 let pct = d.quantidade > 0 ? (d.enviados / d.quantidade) * 100 : 0;
                 document.getElementById("progresso").style.width = pct + "%";
                 
+                // Regras dos botões:
                 document.getElementById("btnIniciar").disabled = d.rodando;
                 document.getElementById("btnParar").disabled = !d.rodando;
 
-                const podeRetomar = d.pausado && d.enviados < d.quantidade;
-                document.getElementById("btnRetomar").style.display = podeRetomar ? "block" : "none";
+                // O botão de RETOMAR só habilita se estiver pausado e ainda sobrarem rolagens
+                const podeRetomar = d.pausado && (d.enviados < d.quantidade);
+                document.getElementById("btnRetomar").disabled = !podeRetomar;
+                
             } catch(e) {}
         }
         setInterval(atualizarStatus, 2000);
